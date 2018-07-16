@@ -1,0 +1,337 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(knitr)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+This dataset is a random sample of movies that includes information from two popular movie database and rating sites Rotten Tomatoes and IMDB. \n
+
+**Generalizability:**
+We do not have information regarding the sampling method used. For this exercise, we assume it is a valid random sample. \n
+
+**Causality:**
+On the same note, there is no indication that random assignment has been performed in drawing this sample. Therefore, we cannot draw/infer conclusions on causality. At most, we can generalize on our findings.\n
+
+**Bias and reservations:**
+Considering many successful movies tend to generate sequels, we acknowledge potential bias on sequels rating from original movie rating. This requires taking into account temporal data that it is out of scope for this research topic.\n
+For the project at hand, I assume the observations in the sample dataset are independent. However, some variables in the dataset could be dependent of each other. I will analyse the variable collinearity to identify such potential dependencies and remove them from the model.\n
+
+```{r}
+
+#str(movies)
+head(movies)
+tail(movies)
+```
+
+* * *
+
+## Part 2: Research question
+
+I would like to investigate if a movie IMDB rating score can be predicted based on the variables in the sample dataset (genre, ratings, actors, length, etc.). Such analysis can aid movie theaters make better decisions regarding the movies they show and promote, or assign viewing rooms ahead of the movie release.
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+Since I will be looking to fit a multiple linear regression model, the exploratory data analysis will address the research question in context of validating the conditions required to develop a linear regression model.\n
+
+The data set is comprised of 651 randomly sampled movies produced and released before 2016.
+
+**Summary Statistics**
+```{r EDA}
+summary(movies)
+```
+Looking at summary statistics, I select these variables for further exploration: \n
+
+*title:* Title of movie (651 titles, no missing values)\n
+
+*genre:* Genere of movie (categorical variables with 11 levels)\n
+
+*runtime:* Movie runetime (numeric variable represented in minutes, 1 missing value)
+
+*mpaa_rating:* MPAA rating of the movie (factor variable with 6 levels, 50 unrated movies)
+
+*best_dir_win:* Binary variable (yes, no, no missing values) stating if the director has won an Oscar before
+
+*best_actor_win:* Binary variable (yes, no, no missing values) stating if the actor has won an Oscar
+
+*best_actress_win :* Binary variable (yes, no, no missing values) stating if the actress has won an Oscar
+
+**imdb_rating:** Rating on IMDB, the prediction target variable (numeric, no missing values)
+
+
+**Next**: create a data subset with the variables selected and remove the missing values
+
+```{r}
+#subset data
+my_vars <- c("title", "genre", "runtime", "mpaa_rating","best_dir_win", "best_actor_win", "best_actress_win","imdb_rating")
+my_movies <- movies[my_vars]
+
+#remove missing values
+my_movies <- na.exclude(my_movies)
+dim(my_movies)
+
+```
+
+
+The working dataset has 650 observations and 8 variables
+One additional validation is to ensure we do not have duplicate rows such as repeating movie titles in the dataset.
+
+
+```{r duplicate_titles}
+my_movies <- my_movies[!duplicated(my_movies),]
+dim(my_movies)
+```
+
+One observation was removed.
+
+**Plots**
+
+Build plots for the working dataset
+```{r Plots, message=FALSE, fig.width = 12, fig.height= 5}
+require(gridExtra)
+
+label1 <- ggplot(data = my_movies, aes(x=genre)) +
+  geom_bar(fill="maroon1", position="dodge") +
+  xlab("Movie Genre") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1))
+
+label2 <- ggplot(data = my_movies, aes(x=mpaa_rating)) +
+  geom_bar(fill="chartreuse1", position="dodge") +
+  xlab("Movie MPAA Rating") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1))
+
+label3 <- ggplot(data = my_movies, aes(x=runtime)) +
+  geom_histogram( binwidth = 5, fill="lightpink1", position="dodge") +
+  xlab("Movie Runtime") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1))
+
+label4 <- ggplot(binwidth = 0.5,data = my_movies, aes(x=imdb_rating)) +
+  geom_histogram( fill="royalblue1", position="dodge") +
+  xlab("Movie IMDB Rating") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1))
+
+
+grid.arrange( label1,label2,label3,label4,  nrow=1,top="Movie Details")
+
+```
+
+\n
+
+In the first chart 'Movie Genre' drama, comprise most of the genre category, followed by comedy, action and mystery.
+
+The second chart represents the MPAA rating with R subcategory dominating the other levels. In addition, some movies are unrated. 
+
+The movie runtime, represented in minutes, has a distribution slightly right skewed. However, our sample data it's large enough
+
+The forth chart, the dependent variable it has slightly left skewed. However, the data sample it's large enough so this will not impact negatively the model.
+
+
+* * *
+
+## Part 4: Modeling
+
+* Variables to consider for the model:
+
+
+```{r Model}
+plot(my_movies[,2:8], pch=1, col="blue", main="Matrix Scatterplot of movies  variables"  )
+```
+
+Because the goal is to predict the rating of a movie prior to its release, I'll be suing only predictors that can be known ahead of time. I will also exclude variables with large values such as name of titles, actors, directors, studios.
+
+There are not variables in the scatterplot above that show strong collinearity among them. I will use the following variables for the full model:  `genre`, `runtime`, `mpaa_rating`, `est_dir_win`, `best_actor_win`, `best_actress_win`.
+
+* Model selection and execution:
+  
+  Start by fitting an initial full model using 6 predictors
+
+
+```{r full model}
+
+# full model
+my_mlr <- lm(imdb_rating~ genre + runtime + mpaa_rating +
+               best_dir_win + best_actor_win + best_actress_win, data = my_movies)
+
+
+summary(my_mlr)
+
+
+```
+
+While R provides additional criteria, arguably better, such as AIC mentioned in the course for this exercise we only have two methods based on p-value and adjusted R-squared. Given the output generated above, I find easier and straighter forward to use p-value backwards elimination. I am providing the AIC method in the end to show that it arrives at similar result as p-value backward elimination.
+
+My goal is to build a parsimonious model, the simplest model with the best prediction power. With an adjusted R-squared of just 29% I will employ a stepwise model selection with backward elimination using p-value criteria.
+
+Therefore starting with the full model `my_mlr` containing all predictors. I will drop one predictor at a time, the predictor with the highest p-value and refit the model. Repeat the procedure until the parsimonious model is reached. 
+
+* Step 1: Analysing the above model coefficients I will drop `best_actor_win` because it has the highest p-value (0.98010)
+
+
+```{r}
+my_mlr <- lm(imdb_rating~ genre + runtime + mpaa_rating +
+               best_dir_win + best_actress_win, data = my_movies)
+
+
+summary(my_mlr)
+```
+
+* Step 2: Drop `best_actress_win` because it has the highest p-value(0.489662).
+
+
+```{r}
+my_mlr <- lm(imdb_rating~ genre + runtime + mpaa_rating +
+               best_dir_win, data = my_movies)
+
+summary(my_mlr)
+```
+
+Although some levels of certain predictors have high p-values ( e.q. genreComedy,mpaa_ratingUnrated ) the other levels have low p-values. Therefore, I keep them. 
+Since there are no more steps to perform, I arrived at the final model based on `genre + runtime + mpaa_rating + best_dir_win` predictors.
+
+
+```{r}
+final_mlr <- lm(imdb_rating~ genre + runtime + mpaa_rating +
+               best_dir_win, data = my_movies)
+
+summary(final_mlr)
+```
+```{r anova}
+anova(final_mlr)
+```
+
+The final model still has the adjusted R-squared almost the same as the initial model yet all the predictors used are statistically significant. With p-values almost zero I reject the null hypothesis(the status quo) in favour of the alternative hypothesis that at least one of the coefficients is different than 0. 
+
+From the model output F-statistic: 16.36 on 17 and 631 DF, p-value: < 2.2e-16. Since p-value < 0.05, the model as a whole is significant.
+
+Next, I will cover the interpretations of model coefficients.
+
+
+**Interpretation of model coefficients**
+
+In regression with multiple independent variables, the **coefficient** tells us how much the dependent/response variable is expected to change (increase or decrease according with the slope sign) when the independent variable increases/decreases by one unit, holding all the other independent variables constant.
+
+The `intercept` is 5.253068. In the `genre` category, it's interesting to notice the 4 levels that have a negative slope are also not statistically significant. The other 6 in order of impact on response variable (IMDB rating) shown by the value of the estimate value; increase the movie rating by their respective estimate value while all other predictors are held constant. 
+
+The `runtime` predictor is statistically significant and has a positive impact on rating. Similar the `best_dir_win` has a statistically significant positive impact. Next the MPAA variable  has a slight lower impact on the dependent variable. Out of 5 levels 3 are statistically significant.
+
+
+**Model Diagnostics**
+
+*	Linear relationships ship between x and y
+*	Nearly normal residuals
+*	Constant variability of residuals
+*	Independence of residuals
+
+At the beginning of this section in the matrix scatterplot, we looked at collinearity and found no issue.
+
+* * *
+```{r Nearly normal residuals}
+hist(final_mlr$residuals, main = "Histogram of residuals")
+qqnorm(final_mlr$residuals, main = "Normal probability plot of residuals")
+qqline(final_mlr$residuals)
+
+```
+
+Although there is a slight left skewness, the sample size is big enough to conclude there are nearly normal residuals centered at 0.
+
+```{r Constant variability of residuals}
+
+plot(final_mlr$residuals ~ final_mlr$fitted, main="Residuals vs. fitted")
+abline(h = 0)
+plot(abs(final_mlr$residuals) ~ final_mlr$fitted, main= "Absolute value of residuals vs. fitted")
+```
+
+\n The residuals are equally variable for low and high values of the predicted response variable and scattered in a band with a constant width around 0 (no fan shape).
+
+
+```{r Independence of residuals}
+plot(final_mlr$residuals, main = "Independence of residuals")
+abline(h = 0)
+```
+
+The residuals in the plot are generally homoscedastic supporting the independence of residuals
+
+
+## Part 5: Prediction
+
+For the prediction section, I select `Hidden Figures` that is dear to me being fun, educational, and entertaining.
+
+
+Movie reference [Hidden Figures](http://www.imdb.com/title/tt4846340/?ref_=adv_li_tt)
+
+```{r Prediction, message=FALSE}
+my_test_mlr<-data.frame(genre="Drama", runtime=127, mpaa_rating="PG", best_dir_win="no")
+
+mlr_HF <- predict(final_mlr, my_test_mlr, interval = "predict")
+
+summary(mlr_HF)
+
+
+show_pred_hf <- data.frame("Hidden Figures", round(mlr_HF[1],1),paste(round(mlr_HF[2],1),round(mlr_HF[3],1),sep = "-"),"7.8")
+
+
+kable(show_pred_hf, col.names = c("Movie","Predicted Rating",	"95% CI",	"Observed Rating"))  
+
+```
+
+As per prediction, output the model scored the movie 'Hidden Figures` with a rating of 6.9 and 95% confidence prediction interval 5.1-8.7. Although a bit lower than the actual observed rating of 7.8 both ratings (predicted, observed) fall within the predicted CI.
+The model works, however there is room for improvement, which I will address shortly in the conclusion.
+
+* * *
+
+## Part 6: Conclusion
+
+In conclusion, I was able to build a solid model using a p-value stepwise backward selection methodology to fit a linear regression model to the movies dataset. While the dataset has many potential predictors, I only considered the variables that we know ahead of time release. 
+
+Another point I would like to make is the analysis between statistical significance and practical significance. When it comes to movies success the initial box office revenue. This information is not available in the dataset. I am confident that adding this predictor to the model would increase the predictability power of the final model.
+
+Overall, I have used all the topics covered in the course, from data exploration, to variable partitioning, correlation, model selection and execution, to presenting the findings.
+
+Furthermore, I have explored on my own additional model election criteria, that I will present below as practice.
+
+# Thank you for your time!
+
+## Part 7: Alternative stepwise model selection
+
+  Stepwise Regression using a different criteria not covered in the coure but mentioned: AIC
+  
+```{r AIC stepwise model selection, message=FALSE}
+
+library(MASS)
+
+my_mlr <- lm(imdb_rating~ genre + runtime + mpaa_rating +
+               best_dir_win + best_actor_win + best_actress_win, data = my_movies)
+
+
+step <- stepAIC(my_mlr, direction="both")
+step$anova # display results 
+```
+
+This method yields the same results as the model selection I employed in the project.
